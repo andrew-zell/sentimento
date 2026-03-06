@@ -38,6 +38,9 @@ coverage/
 *.db
 *.db-journal
 
+# Seed file contains credentials — run locally only
+server/prisma/seed.ts
+
 # Temporary files
 tmp/
 temp/
