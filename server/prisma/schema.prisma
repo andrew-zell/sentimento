@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Users table - Admin/Editor/Viewer accounts
+model User {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  name          String
+  role          String   @default("viewer") // admin, editor, viewer
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  questionnaires Questionnaire[]
+  questions      Question[]
+  surveys        Survey[]
+
+  @@map("users")
+}
+
+// Briefing Centers - EBC locations
+model BriefingCenter {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique // SJ, LON, etc.
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  surveys     Survey[]
+  respondents Respondent[]
+
+  @@map("briefing_centers")
+}
+
+// Tour Types - Virtual/In-Person
+model TourType {
+  id   Int    @id @default(autoincrement())
+  slug String @unique // virtualtour, inperson
+  name String
+
+  surveys Survey[]
+
+  @@map("tour_types")
+}
+
+// Questionnaires - Reusable question groups/sections
+model Questionnaire {
+  id           Int      @id @default(autoincrement())
+  title        String
+  description  String?
+  isFollowAlong Boolean @default(false) @map("is_follow_along")
+  isHostLed    Boolean  @default(false) @map("is_host_led")
+  createdById  Int?     @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  createdBy          User?                 @relation(fields: [createdById], references: [id])
+  questions          Question[]
+  surveyQuestionnaires SurveyQuestionnaire[]
+
+  @@map("questionnaires")
+}
+
+// Questions - Individual questions belonging to a questionnaire
+model Question {
+  id              Int       @id @default(autoincrement())
+  questionnaireId Int       @map("questionnaire_id")
+  text            String
+  type            String    // multiple_choice, emoji, multi_select, text
+  options         String?   // JSON string for options configuration
+  order           Int       @default(0)
+  isRequired      Boolean   @default(false) @map("is_required")
+  createdById     Int?      @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  createdBy     User?         @relation(fields: [createdById], references: [id])
+  answers       Answer[]
+
+  @@map("questions")
+}
+
+// Surveys - Assembled surveys built by selecting questionnaires
+model Survey {
+  id               Int      @id @default(autoincrement())
+  title            String
+  briefingCenterId Int      @map("briefing_center_id")
+  tourTypeId       Int      @map("tour_type_id")
+  isActive         Boolean  @default(true) @map("is_active")
+  themeConfig      String?  @map("theme_config") // JSON string for survey theme customization
+  createdById      Int?     @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  briefingCenter       BriefingCenter        @relation(fields: [briefingCenterId], references: [id])
+  tourType             TourType              @relation(fields: [tourTypeId], references: [id])
+  createdBy            User?                 @relation(fields: [createdById], references: [id])
+  surveyQuestionnaires SurveyQuestionnaire[]
+  responses            Response[]
+  tourSessions         TourSession[]
+
+  @@unique([briefingCenterId, tourTypeId])
+  @@map("surveys")
+}
+
+// Survey-Questionnaire junction table
+model SurveyQuestionnaire {
+  id              Int @id @default(autoincrement())
+  surveyId        Int @map("survey_id")
+  questionnaireId Int @map("questionnaire_id")
+  order           Int @default(0)
+
+  survey        Survey        @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, questionnaireId])
+  @@map("survey_questionnaires")
+}
+
+// Respondents - Survey takers info
+model Respondent {
+  id               Int      @id @default(autoincrement())
+  name             String
+  company          String
+  position         String?
+  tourDate         DateTime @map("tour_date")
+  briefingCenterId Int      @map("briefing_center_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  briefingCenter    BriefingCenter    @relation(fields: [briefingCenterId], references: [id])
+  responses         Response[]
+  tourParticipants  TourParticipant[]
+
+  @@map("respondents")
+}
+
+// Responses - Survey submissions
+model Response {
+  id           Int       @id @default(autoincrement())
+  surveyId     Int       @map("survey_id")
+  respondentId Int       @map("respondent_id")
+  completedAt  DateTime  @default(now()) @map("completed_at")
+  isArchived   Boolean   @default(false) @map("is_archived")
+
+  survey     Survey     @relation(fields: [surveyId], references: [id])
+  respondent Respondent @relation(fields: [respondentId], references: [id])
+  answers    Answer[]
+
+  @@map("responses")
+}
+
+// Answers - Individual question answers
+model Answer {
+  id             Int    @id @default(autoincrement())
+  responseId     Int    @map("response_id")
+  questionId     Int    @map("question_id")
+  value          String // JSON string for flexible answer storage
+  sentimentScore Float? @map("sentiment_score")
+
+  response Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+
+  @@map("answers")
+}
+
+// Tour Sessions - Host-led tour sessions
+model TourSession {
+  id                  String    @id @default(uuid())
+  surveyId            Int       @map("survey_id")
+  hostCode            String    @unique @map("host_code")
+  status              String    @default("lobby") // lobby, active, completed
+  currentQuestionId   Int?      @map("current_question_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  startedAt           DateTime? @map("started_at")
+  endedAt             DateTime? @map("ended_at")
+
+  survey       Survey            @relation(fields: [surveyId], references: [id])
+  participants TourParticipant[]
+
+  @@map("tour_sessions")
+}
+
+// Tour Participants - Participants in a tour session
+model TourParticipant {
+  id                String    @id @default(uuid())
+  sessionId         String    @map("session_id")
+  respondentId      Int       @map("respondent_id")
+  status            String    @default("in_lobby") // in_lobby, active, completed, abandoned
+  currentQuestionId Int?      @map("current_question_id")
+  joinedAt          DateTime  @default(now()) @map("joined_at")
+  lastSeenAt        DateTime  @default(now()) @map("last_seen_at")
+  completedAt       DateTime? @map("completed_at")
+
+  session    TourSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  respondent Respondent  @relation(fields: [respondentId], references: [id])
+
+  @@unique([sessionId, respondentId])
+  @@map("tour_participants")
+}
