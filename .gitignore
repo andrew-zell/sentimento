@@ -41,6 +41,14 @@ coverage/
 # Seed file contains credentials — run locally only
 server/prisma/seed.ts
 
+# Internal documentation
+EBC_Survey_Tool_Guide.md
+
+# Deployment infrastructure — configure per environment
+fly.toml
+client/fly.toml
+client/nginx.conf
+
 # Temporary files
 tmp/
 temp/
